@@ -1,0 +1,192 @@
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load in 
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+from scipy import stats, integrate
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set(color_codes=True)
+
+# Input data files are available in the "../input/" directory.
+# For example, running this (by clicking run or pressing Shift+Enter) will list the files in the input directory
+
+from subprocess import check_output
+print(check_output(["ls", "../input"]).decode("utf8"))
+
+# Any results you write to the current directory are saved as output.
+
+%matplotlib inline
+import matplotlib.pyplot as plt
+
+from sklearn import tree
+from sklearn.ensemble import BaggingClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import cross_val_score
+from sklearn.metrics import precision_score, confusion_matrix, precision_recall_curve
+from sklearn.neural_network import MLPClassifier
+
+from IPython.display import Image # displaying images files in jupyter
+from IPython.display import IFrame # displaying pdf file in jupyter
+
+## Read in the data
+data = pd.read_csv('../input/creditcard.csv').dropna()
+data['Class'] = data['Class']==1
+
+##Data preparation
+X_labels = [c for c in data.columns if c not in ['Time','Class']]
+X = data.loc[:,X_labels]
+Y = data['Class']
+
+## 1. Decision Tree
+results = []
+for d in range(1,8):
+    clf = tree.DecisionTreeClassifier(max_depth=d)
+    clf = clf.fit(X,Y)    
+    scores = cross_val_score(clf, X, Y, cv=5)
+    tn, fp, fn, tp = confusion_matrix(Y,clf.predict(X)).ravel()
+    print('depth %d, False positive %.2f,False negative %.2f, mean %.8f, '%(d,fp,fn,scores.mean()))
+    results.append((d,fp,fn,scores.mean()))
+    
+df_tree_accuracy = pd.DataFrame(data=results,columns=['depth','False positive','False negative','scores mean'])
+df_tree_accuracy
+
+## For a credit card fraud problem, we can accecpt less False Negative which predict non-fraud when fraud happens
+
+## For the regression tree method, depth 4 seems to be the best since it has a 
+## lower false negative rate while the accurancy(to avoid over-fitting) with cross vilidation is high.
+# Build the classifier and get the predictions
+
+test_size_percent = 0.1
+clf = tree.DecisionTreeClassifier(max_depth=4)
+train_signals, test_signals, train_labels, test_labels = train_test_split(X, Y, test_size=test_size_percent)  
+clf.fit(train_signals, train_labels)  
+predictions = clf.predict_proba(test_signals)[:,1]  
+precision, recall, thresholds = precision_recall_curve(test_labels, predictions)  
+thresholds = np.append(thresholds, 1)
+
+queue_rate = []  
+for threshold in thresholds:  
+    queue_rate.append((predictions >= threshold).mean())
+
+plt.plot(thresholds, precision, color=sns.color_palette()[0])  
+plt.plot(thresholds, recall, color=sns.color_palette()[1])  
+
+leg = plt.legend(('precision', 'recall'), frameon=True)  
+leg.get_frame().set_edgecolor('k')  
+plt.xlabel('threshold')  
+plt.ylabel('%') 
+
+
+## Random Forest
+results = []
+for d in range(1,8):
+    clf_rf = RandomForestClassifier(max_features="sqrt", n_estimators=10*d, max_depth=1)
+    clf_rf = clf_rf.fit(X,Y)
+    scores = cross_val_score(clf_rf, X, Y, cv=5)
+    tn, fp, fn, tp = confusion_matrix(Y,clf_rf.predict(X)).ravel()
+    print('estimator %d, False positive %.2f,False negative %.2f, mean %.8f, '%(d*10,fp,fn,scores.mean()))
+    results.append((d,fp,fn,scores.mean()))
+    
+df_tree_accuracy = pd.DataFrame(data=results,columns=['estimator','False positive','False negative','scores mean'])
+df_tree_accuracy
+
+test_size_percent = 0.1
+clf_rf = RandomForestClassifier(max_features="sqrt", n_estimators=20, max_depth=1)
+train_signals, test_signals, train_labels, test_labels = train_test_split(X, Y, test_size=test_size_percent)  
+clf_rf.fit(train_signals, train_labels)  
+predictions = clf_rf.predict_proba(test_signals)[:,1]  
+precision, recall, thresholds = precision_recall_curve(test_labels, predictions)  
+thresholds = np.append(thresholds, 1)
+
+queue_rate = []  
+for threshold in thresholds:  
+    queue_rate.append((predictions >= threshold).mean())
+
+plt.plot(thresholds, precision, color=sns.color_palette()[0])  
+plt.plot(thresholds, recall, color=sns.color_palette()[1])  
+
+
+leg = plt.legend(('precision', 'recall'), frameon=True)  
+leg.get_frame().set_edgecolor('k')  
+plt.xlabel('threshold')  
+plt.ylabel('%') 
+
+
+
+##Boosting
+res_boosting_mean = []
+res_boosting_std = []
+for d in range(1,5):
+    clf_boosting = AdaBoostClassifier(n_estimators=d*10, learning_rate=0.5)
+    clf_boosting_scores = cross_val_score(clf_boosting, X, Y, cv=5)
+    res_boosting_mean.append(clf_boosting_scores.mean())
+    res_boosting_std.append(clf_boosting_scores.std())
+df_boosting = pd.DataFrame({'Boosting accuracy':res_boosting_mean,'Boosting error':res_boosting_std},index=range(1,5))
+
+df_boosting
+
+
+# Build the classifier and get the predictions
+clf_boosting = AdaBoostClassifier(n_estimators=40, learning_rate=0.5)
+test_size_percent = 0.1
+
+train_signals, test_signals, train_labels, test_labels = train_test_split(X, Y, test_size=test_size_percent)  
+clf_boosting.fit(train_signals, train_labels)  
+predictions = clf_boosting.predict_proba(test_signals)[:,1]  
+precision, recall, thresholds = precision_recall_curve(test_labels, predictions)  
+thresholds = np.append(thresholds, 1)
+
+queue_rate = []  
+for threshold in thresholds:  
+    queue_rate.append((predictions >= threshold).mean())
+
+plt.plot(thresholds, precision, color=sns.color_palette()[0])  
+plt.plot(thresholds, recall, color=sns.color_palette()[1])  
+
+leg = plt.legend(('precision', 'recall'), frameon=True)  
+leg.get_frame().set_edgecolor('k')  
+plt.xlabel('threshold')  
+plt.ylabel('%') 
+plt.xlim([0, 1])
+
+
+##try neural network
+
+results = []
+for d in range(2,6):
+    clf_neural = MLPClassifier(solver='lbfgs', alpha=1e-5,hidden_layer_sizes=(d, 2), random_state=1)
+    clf_neural.fit(X, Y)  
+    scores = cross_val_score(clf_neural, X, Y, cv=5)
+    tn, fp, fn, tp = confusion_matrix(Y,clf_neural.predict(X)).ravel()
+    print('layer %d, False positive %.2f,False negative %.2f, mean %.8f, '%(d,fp,fn,scores.mean()))
+    results.append((d,fp,fn,scores.mean()))
+    
+df_tree_accuracy = pd.DataFrame(data=results,columns=['layer','False positive','False negative','scores mean'])
+df_tree_accuracy
+
+# Build the classifier and get the predictions
+clf_neural = clf_neural = MLPClassifier(solver='lbfgs', alpha=1e-5,hidden_layer_sizes=(3, 2), random_state=1) 
+test_size_percent = 0.1
+
+train_signals, test_signals, train_labels, test_labels = train_test_split(X, Y, test_size=test_size_percent)  
+clf_neural.fit(train_signals, train_labels)  
+predictions = clf_neural.predict_proba(test_signals)[:,1]  
+precision, recall, thresholds = precision_recall_curve(test_labels, predictions)  
+thresholds = np.append(thresholds, 1)
+
+queue_rate = []  
+for threshold in thresholds:  
+    queue_rate.append((predictions >= threshold).mean())
+
+plt.plot(thresholds, precision, color=sns.color_palette()[0])  
+plt.plot(thresholds, recall, color=sns.color_palette()[1])  
+
+
+leg = plt.legend(('precision', 'recall'), frameon=True)  
+leg.get_frame().set_edgecolor('k')  
+plt.xlabel('threshold')  
+plt.ylabel('%') 
